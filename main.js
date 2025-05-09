@@ -71,8 +71,12 @@ function displayItemInfo(item) {
         }
         usedInHtml += `</div>`;
     }
+    const imgUrl = `https://www.artifactsmmo.com/images/items/${item.code}.png`;
     itemInfo.innerHTML = `<div class="card"><div class="card-body">
-        <h3>${item.name}</h3>
+        <div class="d-flex align-items-center mb-3">
+            <img src="${imgUrl}" alt="${item.name}" style="max-width:64px;max-height:64px;" class="me-3" onerror="this.style.display='none'">
+            <h3 class="mb-0">${item.name}</h3>
+        </div>
         <p><strong>Type:</strong> ${item.type || ''} ${item.subtype || ''}</p>
         <p><strong>Level:</strong> ${item.level || ''}</p>
         <p><strong>Description:</strong> ${item.description || ''}</p>
@@ -393,8 +397,17 @@ function renderTree(nodes, links) {
         circle.setAttribute('stroke', '#007bff');
         circle.setAttribute('stroke-width', '3');
         g.appendChild(circle);
+        // Image
+        const imgUrl = `https://www.artifactsmmo.com/images/items/${n.code}.png`;
+        const img = document.createElementNS(svgNS, 'image');
+        img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', imgUrl);
+        img.setAttribute('x', x - 16);
+        img.setAttribute('y', y - 24);
+        img.setAttribute('width', 32);
+        img.setAttribute('height', 32);
+        img.setAttribute('onerror', "this.style.display='none'");
+        g.appendChild(img);
         // Text (name and quantity)
-        // Truncate name if too long for circle (max 10 chars, add ellipsis)
         const maxLen = 10;
         let displayName = n.name;
         let truncated = false;
@@ -404,12 +417,10 @@ function renderTree(nodes, links) {
         }
         const text = document.createElementNS(svgNS, 'text');
         text.setAttribute('x', x);
-        text.setAttribute('y', y - 2);
+        text.setAttribute('y', y + 22);
         text.setAttribute('text-anchor', 'middle');
         text.setAttribute('font-size', '13px');
         text.textContent = displayName;
-        g.appendChild(text);
-        // Custom tooltip for truncated names
         if (truncated) {
             g.addEventListener('mouseenter', function(e) {
                 showNodeNameTooltip(n.name, x, y - 30);
@@ -418,10 +429,11 @@ function renderTree(nodes, links) {
                 hideNodeNameTooltip();
             });
         }
+        g.appendChild(text);
         if (n.quantity !== null && n.quantity !== undefined) {
             const qtyText = document.createElementNS(svgNS, 'text');
             qtyText.setAttribute('x', x);
-            qtyText.setAttribute('y', y + 15);
+            qtyText.setAttribute('y', y + 35);
             qtyText.setAttribute('text-anchor', 'middle');
             qtyText.setAttribute('font-size', '12px');
             qtyText.setAttribute('fill', '#555');
@@ -444,63 +456,64 @@ function renderTree(nodes, links) {
 
 let nodeNameTooltipDiv = null;
 function showNodeNameTooltip(name, x, y) {
-    hideNodeNameTooltip();
-    nodeNameTooltipDiv = document.createElement('div');
-    nodeNameTooltipDiv.className = 'position-absolute bg-dark text-white px-2 py-1 rounded shadow';
-    nodeNameTooltipDiv.style.left = (x + graphDiv.offsetLeft - 40) + 'px';
-    nodeNameTooltipDiv.style.top = (y + graphDiv.offsetTop - 10) + 'px';
-    nodeNameTooltipDiv.style.zIndex = 3000;
-    nodeNameTooltipDiv.style.pointerEvents = 'auto';
-    nodeNameTooltipDiv.style.fontSize = '13px';
-    nodeNameTooltipDiv.style.cursor = 'pointer';
-    nodeNameTooltipDiv.textContent = name;
-    nodeNameTooltipDiv.title = 'Click to view item info';
-    nodeNameTooltipDiv.addEventListener('click', function(e) {
-        e.stopPropagation();
-        searchInput.value = name;
-        searchAndDisplayItem(name);
-        hideNodeNameTooltip();
-    });
-    nodeNameTooltipDiv.addEventListener('mouseenter', function() {
-        nodeNameTooltipDiv.classList.add('bg-primary');
-    });
-    nodeNameTooltipDiv.addEventListener('mouseleave', function() {
-        nodeNameTooltipDiv.classList.remove('bg-primary');
-    });
-    document.body.appendChild(nodeNameTooltipDiv);
+hideNodeNameTooltip();
+nodeNameTooltipDiv = document.createElement('div');
+nodeNameTooltipDiv.className = 'position-absolute bg-dark text-white px-2 py-1 rounded shadow';
+nodeNameTooltipDiv.style.left = (x + graphDiv.offsetLeft - 40) + 'px';
+nodeNameTooltipDiv.style.top = (y + graphDiv.offsetTop - 10) + 'px';
+nodeNameTooltipDiv.style.zIndex = 3000;
+nodeNameTooltipDiv.style.pointerEvents = 'auto';
+nodeNameTooltipDiv.style.fontSize = '13px';
+nodeNameTooltipDiv.style.cursor = 'pointer';
+nodeNameTooltipDiv.textContent = name;
+nodeNameTooltipDiv.title = 'Click to view item info';
+nodeNameTooltipDiv.addEventListener('click', function(e) {
+e.stopPropagation();
+searchInput.value = name;
+searchAndDisplayItem(name);
+hideNodeNameTooltip();
+});
+nodeNameTooltipDiv.addEventListener('mouseenter', function() {
+nodeNameTooltipDiv.classList.add('bg-primary');
+});
+nodeNameTooltipDiv.addEventListener('mouseleave', function() {
+nodeNameTooltipDiv.classList.remove('bg-primary');
+});
+document.body.appendChild(nodeNameTooltipDiv);
 }
 function hideNodeNameTooltip() {
-    if (nodeNameTooltipDiv) {
-        document.body.removeChild(nodeNameTooltipDiv);
-        nodeNameTooltipDiv = null;
-    }
+if (nodeNameTooltipDiv) {
+document.body.removeChild(nodeNameTooltipDiv);
+nodeNameTooltipDiv = null;
+}
 }
 
 let popoverDiv = null;
 async function showNodePopover(code, x, y, g) {
-    if (popoverDiv) hideNodePopover();
-    // Fetch item info by code
-    const res = await fetch(`${API_BASE}/${code}`);
-    const data = await res.json();
-    const item = data.data;
-    popoverDiv = document.createElement('div');
-    popoverDiv.className = 'popover bs-popover-auto show position-absolute';
-    popoverDiv.style.left = (x + graphDiv.offsetLeft - 60) + 'px';
-    popoverDiv.style.top = (y + graphDiv.offsetTop - 20) + 'px';
-    popoverDiv.style.zIndex = 2000;
-    popoverDiv.innerHTML = `<div class="popover-arrow"></div><h3 class="popover-header">${item.name}</h3><div class="popover-body">
-        <strong>Type:</strong> ${item.type || ''} ${item.subtype || ''}<br>
-        <strong>Level:</strong> ${item.level || ''}<br>
-        <strong>Description:</strong> ${item.description || ''}<br>
-        <strong>Tradeable:</strong> ${item.tradeable ? 'Yes' : 'No'}<br>
-        ${item.effects && item.effects.length ? `<strong>Effects:</strong> ${item.effects.map(e => `${e.code}: ${e.value}`).join(', ')}<br>` : ''}
-        ${item.craft ? `<strong>Craft Skill:</strong> ${item.craft.skill} (Level ${item.craft.level})<br>` : ''}
-    </div>`;
-    document.body.appendChild(popoverDiv);
+if (popoverDiv) hideNodePopover();
+// Fetch item info by code
+const res = await fetch(`${API_BASE}/${code}`);
+const data = await res.json();
+const item = data.data;
+const imgUrl = `https://www.artifactsmmo.com/images/items/${item.code}.png`;
+popoverDiv = document.createElement('div');
+popoverDiv.className = 'popover bs-popover-auto show position-absolute';
+popoverDiv.style.left = (x + graphDiv.offsetLeft - 60) + 'px';
+popoverDiv.style.top = (y + graphDiv.offsetTop - 40) + 'px';
+popoverDiv.style.zIndex = 2000;
+popoverDiv.innerHTML = `<div class="popover-arrow"></div><div class="d-flex align-items-center mb-2"><img src="${imgUrl}" alt="${item.name}" style="max-width:36px;max-height:36px;margin-right:8px;" onerror="this.style.display='none'"><h3 class="popover-header mb-0">${item.name}</h3></div><div class="popover-body">
+<strong>Type:</strong> ${item.type || ''} ${item.subtype || ''}<br>
+<strong>Level:</strong> ${item.level || ''}<br>
+<strong>Description:</strong> ${item.description || ''}<br>
+<strong>Tradeable:</strong> ${item.tradeable ? 'Yes' : 'No'}<br>
+${item.effects && item.effects.length ? `<strong>Effects:</strong> ${item.effects.map(e => `${e.code}: ${e.value}`).join(', ')}<br>` : ''}
+${item.craft ? `<strong>Craft Skill:</strong> ${item.craft.skill} (Level ${item.craft.level})<br>` : ''}
+</div>`;
+document.body.appendChild(popoverDiv);
 }
 function hideNodePopover() {
-    if (popoverDiv) {
-        document.body.removeChild(popoverDiv);
-        popoverDiv = null;
+if (popoverDiv) {
+document.body.removeChild(popoverDiv);
+popoverDiv = null;
     }
 }
