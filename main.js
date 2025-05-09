@@ -7,6 +7,13 @@ const spinner = document.getElementById('spinner');
 const itemInfo = document.getElementById('itemInfo');
 const graphDiv = document.getElementById('graph');
 const autocompleteList = document.getElementById('autocomplete-list');
+const backBtn = document.getElementById('backBtn');
+const forwardBtn = document.getElementById('forwardBtn');
+const breadcrumbs = document.getElementById('breadcrumbs');
+
+let historyStack = [];
+let historyPointer = -1;
+let breadcrumbTrail = [];
 
 async function fetchAllItems() {
     let items = [];
@@ -40,6 +47,30 @@ function showPopup(message) {
 }
 
 function displayItemInfo(item) {
+    // Find all items that use this item as a crafting material
+    let usedIn = [];
+    if (allItems && allItems.length) {
+        usedIn = allItems.filter(other =>
+            other.craft && other.craft.items && other.craft.items.some(comp => comp.code === item.code)
+        );
+    }
+    let usedInHtml = '';
+    if (usedIn.length > 0) {
+        const maxToShow = 5;
+        const first = usedIn.slice(0, maxToShow);
+        const rest = usedIn.slice(maxToShow);
+        usedInHtml = `<div class='mt-3'><strong>Crafting material for:</strong><ul class='mb-0' id='usedInList'>` +
+            first.map(u => `<li><a href="#" class="craft-used-in" data-name="${u.name}">${u.name}</a></li>`).join('') +
+            `</ul>`;
+        if (rest.length > 0) {
+            usedInHtml += `<a href="#" id="showMoreUsedIn" class="d-block mt-1">Show more (${rest.length} more)</a>`;
+            usedInHtml += `<ul class='mb-0 d-none' id='usedInListMore'>` +
+                rest.map(u => `<li><a href="#" class="craft-used-in" data-name="${u.name}">${u.name}</a></li>`).join('') +
+                `</ul>`;
+            usedInHtml += `<a href="#" id="showLessUsedIn" class="d-block mt-1 d-none">Show less</a>`;
+        }
+        usedInHtml += `</div>`;
+    }
     itemInfo.innerHTML = `<div class="card"><div class="card-body">
         <h3>${item.name}</h3>
         <p><strong>Type:</strong> ${item.type || ''} ${item.subtype || ''}</p>
@@ -49,8 +80,39 @@ function displayItemInfo(item) {
         ${item.effects && item.effects.length ? `<p><strong>Effects:</strong> ${item.effects.map(e => `${e.code}: ${e.value}`).join(', ')}</p>` : ''}
         ${item.craft ? `<p><strong>Craft Skill:</strong> ${item.craft.skill} (Level ${item.craft.level})</p>` : ''}
         <div id='exchangeData' class='mt-3'></div>
+        ${usedInHtml}
     </div></div>`;
     fetchExchangeData(item.code);
+    // Add click handlers for used-in links
+    document.querySelectorAll('.craft-used-in').forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            const name = this.getAttribute('data-name');
+            searchInput.value = name;
+            searchAndDisplayItem(name, {resetBreadcrumb: true});
+        });
+    });
+    // Show more/less functionality
+    const showMore = document.getElementById('showMoreUsedIn');
+    const showLess = document.getElementById('showLessUsedIn');
+    const usedInListMore = document.getElementById('usedInListMore');
+    if (showMore && showLess && usedInListMore) {
+        showMore.addEventListener('click', function(e) {
+            e.preventDefault();
+            usedInListMore.classList.remove('d-none');
+            showMore.classList.add('d-none');
+            showLess.classList.remove('d-none');
+        });
+        showLess.addEventListener('click', function(e) {
+            e.preventDefault();
+            usedInListMore.classList.add('d-none');
+            showMore.classList.remove('d-none');
+            showLess.classList.add('d-none');
+            // Optional: scroll list into view
+            const usedInList = document.getElementById('usedInList');
+            if (usedInList) usedInList.scrollIntoView({behavior:'smooth', block:'nearest'});
+        });
+    }
 }
 
 async function fetchExchangeData(code) {
@@ -79,7 +141,8 @@ async function fetchExchangeData(code) {
     }
 }
 
-async function searchAndDisplayItem(name) {
+async function searchAndDisplayItem(name, options = {}) {
+    // options: {fromHistory: bool, fromBreadcrumb: bool, resetBreadcrumb: bool}
     showSpinner(true);
     if (!allItems.length) allItems = await fetchAllItems();
     const item = allItems.find(i => i.name.toLowerCase() === name.toLowerCase());
@@ -92,7 +155,72 @@ async function searchAndDisplayItem(name) {
     }
     displayItemInfo(item);
     buildCraftTree(item);
+    // History management
+    if (options.resetBreadcrumb) {
+        historyStack = [name];
+        historyPointer = 0;
+    } else if (!options.fromHistory) {
+        // If not navigating via back/forward, add to history
+        if (historyPointer < historyStack.length - 1) {
+            historyStack = historyStack.slice(0, historyPointer + 1);
+        }
+        historyStack.push(name);
+        historyPointer = historyStack.length - 1;
+    }
+    // Breadcrumb management
+    if (options.resetBreadcrumb) {
+        breadcrumbTrail = [name];
+    } else if (!options.fromBreadcrumb) {
+        breadcrumbTrail = historyStack.slice(0, historyPointer + 1);
+    }
+    renderHistoryUI();
 }
+
+function renderHistoryUI() {
+    // Back/forward buttons
+    backBtn.disabled = historyPointer <= 0;
+    forwardBtn.disabled = historyPointer >= historyStack.length - 1;
+    // Breadcrumbs
+    breadcrumbs.innerHTML = '';
+    breadcrumbTrail.forEach((name, idx) => {
+        const li = document.createElement('li');
+        li.className = 'breadcrumb-item' + (idx === breadcrumbTrail.length - 1 ? ' active' : '');
+        if (idx === breadcrumbTrail.length - 1) {
+            li.setAttribute('aria-current', 'page');
+            li.textContent = name;
+        } else {
+            const a = document.createElement('a');
+            a.href = '#';
+            a.textContent = name;
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                historyPointer = idx;
+                searchInput.value = name;
+                searchAndDisplayItem(name, {fromHistory: true, fromBreadcrumb: true});
+            });
+            li.appendChild(a);
+        }
+        breadcrumbs.appendChild(li);
+    });
+}
+
+backBtn.onclick = function() {
+    if (historyPointer > 0) {
+        historyPointer--;
+        const name = historyStack[historyPointer];
+        searchInput.value = name;
+        searchAndDisplayItem(name, {fromHistory: true});
+    }
+};
+forwardBtn.onclick = function() {
+    if (historyPointer < historyStack.length - 1) {
+        historyPointer++;
+        const name = historyStack[historyPointer];
+        searchInput.value = name;
+        searchAndDisplayItem(name, {fromHistory: true});
+    }
+};
+
 
 searchBtn.onclick = () => {
     const name = searchInput.value.trim();
@@ -112,11 +240,18 @@ searchInput.addEventListener('input', async function(e) {
         itemDiv.type = 'button';
         itemDiv.className = 'list-group-item list-group-item-action';
         itemDiv.innerHTML = item.name.replace(new RegExp(val, 'gi'), match => `<strong>${match}</strong>`);
+        // Custom event for keyboard selection
+        itemDiv.addEventListener('autocompleteSelect', function(e) {
+            searchInput.value = item.name;
+            autocompleteList.innerHTML = '';
+            searchAndDisplayItem(item.name, {resetBreadcrumb: true});
+        });
+        // Mouse selection
         itemDiv.addEventListener('mousedown', function(e) {
             e.preventDefault();
             searchInput.value = item.name;
             autocompleteList.innerHTML = '';
-            searchAndDisplayItem(item.name);
+            searchAndDisplayItem(item.name, {resetBreadcrumb: true});
         });
         autocompleteList.appendChild(itemDiv);
     });
@@ -135,10 +270,12 @@ searchInput.addEventListener('keydown', function(e) {
         e.preventDefault();
     } else if (e.key === 'Enter') {
         if (currentFocus > -1 && items[currentFocus]) {
-            items[currentFocus].click();
+            // simulate click but with resetBreadcrumb
             e.preventDefault();
+            items[currentFocus].dispatchEvent(new CustomEvent('autocompleteSelect', {bubbles: true}));
         } else {
-            searchBtn.click();
+            const name = searchInput.value.trim();
+            if (name) searchAndDisplayItem(name, {resetBreadcrumb: true});
         }
     }
 });
@@ -294,6 +431,12 @@ function renderTree(nodes, links) {
         // Hover popover
         g.addEventListener('mouseenter', e => showNodePopover(n.code, x, y, g));
         g.addEventListener('mouseleave', hideNodePopover);
+        // Click loads item info
+        g.addEventListener('click', e => {
+            e.stopPropagation();
+            searchInput.value = n.name;
+            searchAndDisplayItem(n.name);
+        });
         svg.appendChild(g);
     });
     graphDiv.appendChild(svg);
@@ -307,9 +450,23 @@ function showNodeNameTooltip(name, x, y) {
     nodeNameTooltipDiv.style.left = (x + graphDiv.offsetLeft - 40) + 'px';
     nodeNameTooltipDiv.style.top = (y + graphDiv.offsetTop - 10) + 'px';
     nodeNameTooltipDiv.style.zIndex = 3000;
-    nodeNameTooltipDiv.style.pointerEvents = 'none';
+    nodeNameTooltipDiv.style.pointerEvents = 'auto';
     nodeNameTooltipDiv.style.fontSize = '13px';
+    nodeNameTooltipDiv.style.cursor = 'pointer';
     nodeNameTooltipDiv.textContent = name;
+    nodeNameTooltipDiv.title = 'Click to view item info';
+    nodeNameTooltipDiv.addEventListener('click', function(e) {
+        e.stopPropagation();
+        searchInput.value = name;
+        searchAndDisplayItem(name);
+        hideNodeNameTooltip();
+    });
+    nodeNameTooltipDiv.addEventListener('mouseenter', function() {
+        nodeNameTooltipDiv.classList.add('bg-primary');
+    });
+    nodeNameTooltipDiv.addEventListener('mouseleave', function() {
+        nodeNameTooltipDiv.classList.remove('bg-primary');
+    });
     document.body.appendChild(nodeNameTooltipDiv);
 }
 function hideNodeNameTooltip() {
